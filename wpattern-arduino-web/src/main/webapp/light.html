@@ -1,0 +1,157 @@
+<html>
+<head>
+<script type="text/javascript" src="https://www.google.com/jsapi"></script>
+<script type="text/javascript">
+      /*
+      	Chart
+      */
+      google.load("visualization", "1", {packages:["corechart"]});
+      google.setOnLoadCallback(drawChart);
+
+      var MAX_READS = 20;
+      var lightData = [['Time', 'Light']];
+      
+      function drawChart() {
+    	if (lightData.length <= 1) {
+        	return;
+        }
+        
+        var dataChart = google.visualization.arrayToDataTable(lightData);
+
+        var options = {
+          title: 'Measure Light using Arduino',
+          hAxis: {title: 'Time',  titleTextStyle: {color: '#333'}},
+          vAxis: {ticks: [0, 150, 300, 450, 600, 750, 900, 1050]}
+        };
+
+        chart = new google.visualization.AreaChart(document.getElementById('chart_div'));
+        chart.draw(dataChart, options);
+      }
+
+      function addLightData(time, light) {
+          lightData.push([time, light]);
+          
+          if (lightData.length > MAX_READS) {
+              lightData.splice(1, lightData.length - MAX_READS);
+          }
+      }
+
+      /*
+      	WebSocket
+      */
+      var wsUri = getRootUri() + "/wpattern-arduino-web/ws/light";
+      var websocket = new WebSocket(wsUri);
+
+      function getRootUri() {
+   	      return "ws://" + (document.location.hostname == "" ? "localhost" : document.location.hostname) + ":" +
+              (document.location.port == "" ? "8080" : document.location.port);
+      }
+
+      function init() {
+          output = document.getElementById("output");
+          
+          websocket.onopen = function(evt) {
+              onOpen(evt);
+          };
+
+          websocket.onclose = function(evt) {
+              onClose(evt);
+          };
+          
+          websocket.onmessage = function(evt) {
+              onMessage(evt);
+          };
+          
+          websocket.onerror = function(evt) {
+              onError(evt);
+          };
+      }
+
+      function turnOnLed() {
+          websocket.send("l");
+      }
+
+      function turnOffLed() {
+          websocket.send("d");
+      }
+
+      function onOpen(evt) {
+          writeToScreen("Connected!");
+      }
+
+      function onClose(evt) {
+          writeToScreen("Disconnected!");
+      }
+
+      function onMessage(evt) {
+          var splitData = evt.data.split(";");
+          
+          if (splitData.length >= 4) {
+        	  var splitDate = splitData[0].split(":");
+        	  var year = parseInt(splitDate[0]);
+        	  var month = parseInt(splitDate[1]);
+        	  var day = parseInt(splitDate[2]);
+        	  var hour = parseInt(splitDate[3]);
+        	  var minute = parseInt(splitDate[4]);
+        	  var second = parseInt(splitDate[5]);
+        	  var millisecond = parseInt(splitDate[6]);
+        	  
+              addLightData(new Date(year, month, day, hour, minute, second, millisecond),
+                      parseInt(splitData[4]));
+
+              document.getElementById("inputTemperature").value = splitData[2] + "°C";
+              document.getElementById("inputHumidity").value = splitData[3] + "%";
+          }
+          
+          drawChart();
+      }
+
+      function onError(evt) {
+          writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
+      }
+
+      function doSend(message) {
+          websocket.send(message);
+      }
+
+      function writeToScreen(message) {
+          var pre = document.createElement("p");
+          pre.style.wordWrap = "break-word";
+          pre.innerHTML = message;
+
+          while(output.firstChild){
+        	  output.removeChild(output.firstChild);
+          }
+          
+          output.appendChild(pre);
+      }
+
+      window.addEventListener("load", init, false);
+    </script>
+    <link rel="shortcut icon" type="image/x-icon" href="resources/images/wpattern_wproject.ico" />
+</head>
+<body>
+	<div id="output" style="text-align: center;"></div>
+	
+	<div style="text-align: center;">
+		<table align="center">
+			<tr>
+				<td>Temperature:</td>
+				<td><input id="inputTemperature" type="text" size="5" readonly="readonly"></td>
+			</tr>
+			<tr>
+				<td>Humidity:</td>
+				<td><input id="inputHumidity" type="text" size="5" readonly="readonly"></td>
+			</tr>
+		</table>
+		
+		<form action="">
+			<input id="buttonTurnOnLed" onclick="turnOnLed()" value="Turn On (LED)" type="button">
+			<input id="buttonTurnOffLed" onclick="turnOffLed()" value="Turn Off (LED)" type="button">
+			<br>
+		</form>
+	</div>
+	
+	<div align="center" id="chart_div" style="width: auto; height: auto; min-height: 600px; "></div>
+</body>
+</html>
